@@ -17,21 +17,19 @@ static GBitmap *s_bitmap_cutted_map;
 
 static BitmapLayer *s_bitmap_layer_map;
 
-#ifdef PBL_PLATFORM_BASALT
+#ifndef PBL_PLATFORM_APLITE
   static GBitmap *s_bitmap_circle;
   static BitmapLayer *s_bitmap_layer_circle;
   static BitmapLayer *s_bitmap_layer_sea;
 #endif
   
 static Layer *s_layer_lines;
-
-static AppSync sync;
-static uint8_t sync_buffer[64];
  
-enum {
-  LONGITUDE = 0x0,
-  LATITUDE = 0x1
-};
+#define KEY_LONGITUDE 0
+#define KEY_LATITUDE 1
+
+#define COMPOSITING PBL_IF_COLOR_ELSE(GCompOpSet, GCompOpAssign)
+#define MAP_RECT_X PBL_IF_COLOR_ELSE(11, 12)
  
 char *translate_error(AppMessageResult result) {
   switch (result) {
@@ -51,19 +49,6 @@ char *translate_error(AppMessageResult result) {
     case APP_MSG_INTERNAL_ERROR: return "APP_MSG_INTERNAL_ERROR";
     default: return "UNKNOWN ERROR";
   }
-}
-
-static void send_int(int key, int value) {
-  DictionaryIterator *iter;
-  app_message_outbox_begin(&iter);
-  dict_write_int(iter, key, &value, sizeof(int), true);
-  app_message_outbox_send();
-}
-
-
-
-void sync_error_callback(DictionaryResult dict_error, AppMessageResult app_message_error, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "... Sync Error: %s", translate_error(app_message_error));
 }
 
 static void update_time() {
@@ -98,27 +83,36 @@ static void update_time() {
   text_layer_set_text(s_date_layer,buffer_date);
 }
 
-#ifdef PBL_PLATFORM_BASALT
 static void update_map(){
   
   GRect sub_rect = GRect(pox_x,0,120,120);
-  GRect map_rect = GRect(11,37,120,120);
+  GRect map_rect = GRect(MAP_RECT_X,37,120,120);
   
+  if(s_bitmap_cutted_map != NULL) gbitmap_destroy(s_bitmap_cutted_map);
   s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
+  if(s_bitmap_layer_map != NULL) bitmap_layer_destroy(s_bitmap_layer_map);
   s_bitmap_layer_map = bitmap_layer_create(map_rect);
   bitmap_layer_set_bitmap(s_bitmap_layer_map, s_bitmap_cutted_map);
-  bitmap_layer_set_compositing_mode(s_bitmap_layer_map,GCompOpSet );
-  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_circle),bitmap_layer_get_layer(s_bitmap_layer_map));  
+  bitmap_layer_set_compositing_mode(s_bitmap_layer_map, COMPOSITING);
+
+#ifndef PBL_PLATFORM_APLITE
+  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_circle),bitmap_layer_get_layer(s_bitmap_layer_map));
   layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_sea),bitmap_layer_get_layer(s_bitmap_layer_map));
+#else
+  layer_add_child(s_layer_lines, bitmap_layer_get_layer(s_bitmap_layer_map));
+  layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map) ,s_layer_lines);
+#endif
 }
 
 static void generate_map(Layer *window_layer, GRect bounds){
   //init circle$
+#ifndef PBL_PLATFORM_APLITE
   s_bitmap_circle = gbitmap_create_with_resource(RESOURCE_ID_STARS); 
   s_bitmap_layer_circle = bitmap_layer_create(bounds);
   bitmap_layer_set_bitmap(s_bitmap_layer_circle, s_bitmap_circle);
-  bitmap_layer_set_compositing_mode(s_bitmap_layer_circle,GCompOpSet );
+  bitmap_layer_set_compositing_mode(s_bitmap_layer_circle,COMPOSITING );
+#endif
 
   GRect sub_rect = GRect(pox_x,0,120,120);
   GRect map_rect = GRect(11,37,120,120);
@@ -127,13 +121,15 @@ static void generate_map(Layer *window_layer, GRect bounds){
   s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
   s_bitmap_layer_map = bitmap_layer_create(map_rect);
   bitmap_layer_set_bitmap(s_bitmap_layer_map, s_bitmap_cutted_map);
-  bitmap_layer_set_compositing_mode(s_bitmap_layer_map,GCompOpSet );
+  bitmap_layer_set_compositing_mode(s_bitmap_layer_map, COMPOSITING);
   
   //init sea
+#ifndef PBL_PLATFORM_APLITE
   s_bitmap_sea = gbitmap_create_with_resource(RESOURCE_ID_SEA);
   s_bitmap_layer_sea = bitmap_layer_create(bounds);
   bitmap_layer_set_bitmap(s_bitmap_layer_sea, s_bitmap_sea);
-  bitmap_layer_set_compositing_mode(s_bitmap_layer_sea,GCompOpSet );
+  bitmap_layer_set_compositing_mode(s_bitmap_layer_sea, COMPOSITING);
+#endif
 
   //init time
   s_time_layer = text_layer_create(GRect(0, 0, 136, 28));
@@ -150,87 +146,41 @@ static void generate_map(Layer *window_layer, GRect bounds){
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentRight);
   
   //add layers
+#ifndef PBL_PLATFORM_APLITE
   layer_add_child(window_layer, bitmap_layer_get_layer(s_bitmap_layer_circle));
+#endif
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer)); 
-  layer_add_child(window_layer, text_layer_get_layer(s_date_layer)); 
-  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_circle),bitmap_layer_get_layer(s_bitmap_layer_map));  
-  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_sea));  
+  layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
+#ifndef PBL_PLATFORM_APLITE
+  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_circle),bitmap_layer_get_layer(s_bitmap_layer_map));
+  layer_add_child(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_sea));
+#endif
   layer_add_child(window_layer, s_layer_lines); 
 
   //sort layers
+#ifndef PBL_PLATFORM_APLITE
   layer_insert_above_sibling(text_layer_get_layer(s_time_layer) ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_above_sibling(text_layer_get_layer(s_date_layer) ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_above_sibling(s_layer_lines ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_sea),bitmap_layer_get_layer(s_bitmap_layer_map));
+#else
+  layer_insert_above_sibling(text_layer_get_layer(s_time_layer) ,s_layer_lines);     
+  layer_insert_above_sibling(text_layer_get_layer(s_date_layer) ,s_layer_lines); 
+  layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map) ,s_layer_lines); 
+#endif
     
   update_time();
   
 }
 
-#else  
-  static void update_map(){    
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "LONG Update %d",  pox_x);
-
-    GRect sub_rect = GRect(pox_x,0,120,120);
-    GRect map_rect = GRect(12,37,120,120);
-  
-    s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
-    s_bitmap_layer_map = bitmap_layer_create(map_rect);
-    bitmap_layer_set_bitmap(s_bitmap_layer_map, s_bitmap_cutted_map);
-    bitmap_layer_set_compositing_mode(s_bitmap_layer_map,GCompOpAssign);
-    layer_add_child(s_layer_lines, bitmap_layer_get_layer(s_bitmap_layer_map));
-    layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map) ,s_layer_lines);     
-}
-
-static void generate_map(Layer *window_layer, GRect bounds){
-  //init map
-  GRect sub_rect = GRect(pox_x,0,120,120);
-  GRect map_rect = GRect(12,37,120,120);
-  
-  s_bitmap_map = gbitmap_create_with_resource(RESOURCE_ID_DOUBLEMAPDECALE); 
-  s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
-  s_bitmap_layer_map = bitmap_layer_create(map_rect);
-  bitmap_layer_set_bitmap(s_bitmap_layer_map, s_bitmap_cutted_map);
-  bitmap_layer_set_compositing_mode(s_bitmap_layer_map,GCompOpAssign);
-  //init time
-  s_time_layer = text_layer_create(GRect(0, 0, 136, 28));
-  text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
-  text_layer_set_text_alignment(s_time_layer, GTextAlignmentRight);
-  
-    //init time
-  s_date_layer = text_layer_create(GRect(0, 30, 135, 16));
-  text_layer_set_text_color(s_date_layer, GColorWhite);
-  text_layer_set_background_color(s_date_layer, GColorClear);
-  text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-  text_layer_set_text_alignment(s_date_layer, GTextAlignmentRight);
-  
-  //add layers
-    layer_add_child(window_layer, s_layer_lines); 
-  layer_add_child(s_layer_lines, bitmap_layer_get_layer(s_bitmap_layer_map));
-  layer_add_child(window_layer, text_layer_get_layer(s_time_layer)); 
-  layer_add_child(window_layer, text_layer_get_layer(s_date_layer)); 
-
-  //sort layers
-  layer_insert_above_sibling(text_layer_get_layer(s_time_layer) ,s_layer_lines);     
-  layer_insert_above_sibling(text_layer_get_layer(s_date_layer) ,s_layer_lines);     
-  layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map) ,s_layer_lines);     
-  
-  update_time();
-  //send_int(2,0); 
-} 
-#endif
-
-#ifdef PBL_PLATFORM_BASALT
+#ifndef PBL_PLATFORM_APLITE
 static void update_line_proc(Layer *this_layer, GContext *ctx) {
 
   graphics_context_set_fill_color(ctx, GColorWhite);
   graphics_fill_rect(ctx, GRect(71, 30, 1, pox_y), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(71, 30, 63, 1), 0, GCornerNone);
-
-  //send_int(2,0);
+    
 }
 #else
   
@@ -287,44 +237,53 @@ float my_sqrt( float num ){
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
 }  
-  
-void sync_tuple_changed_callback(const uint32_t key,
-        const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
-   
-  switch (key) {
-    case LONGITUDE:
-      pox_x = new_tuple->value->uint32;
-      break;
-    case LATITUDE:
-      pox_y = new_tuple->value->uint32;
-      break;
-  }       
-  update_map();
-} 
+
+static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
+    Tuple* long_tuple = dict_find(iterator, KEY_LONGITUDE);
+    Tuple* lat_tuple = dict_find(iterator, KEY_LATITUDE);
+    pox_x = long_tuple->value->uint32;
+    pox_y = lat_tuple->value->uint32;
+    update_map();
+}
   
 static void main_window_load(Window *window) {
     
   Layer *window_layer  = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
   
-  // location init
-  Tuplet initial_values[] = {
-     TupletInteger(LATITUDE, 0),    
-     TupletInteger(LONGITUDE, 0)
-  };
-  
-  app_sync_init(&sync, sync_buffer, sizeof(sync_buffer), initial_values, ARRAY_LENGTH(initial_values),
-      sync_tuple_changed_callback, sync_error_callback, NULL);
-  
   //init lines
   s_layer_lines = layer_create(bounds);
   layer_set_update_proc(s_layer_lines,update_line_proc);
           
-    generate_map(window_layer, bounds);
+  generate_map(window_layer, bounds);
+}
 
+static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Message dropped! %s", translate_error(reason));
+}
+
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox send failed!");
+}
+
+static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
 }
 
 static void main_window_unload(Window *window) {
+  gbitmap_destroy(s_bitmap_map);
+  gbitmap_destroy(s_bitmap_cutted_map);
+  gbitmap_destroy(s_bitmap_sea);
+  text_layer_destroy(s_time_layer);
+  text_layer_destroy(s_date_layer);
+  bitmap_layer_destroy(s_bitmap_layer_map);
+  layer_destroy(s_layer_lines);
+  
+  #ifdef PBL_PLATFORM_BASALT
+    gbitmap_destroy(s_bitmap_circle);
+    bitmap_layer_destroy(s_bitmap_layer_circle);
+    bitmap_layer_destroy(s_bitmap_layer_sea);
+  #endif
 }
 
 static void init(void) {
@@ -348,7 +307,13 @@ static void init(void) {
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 
   //message location open
-  app_message_open(64, 64);
+  // Register callbacks
+    app_message_register_inbox_received(inbox_received_callback);
+    app_message_register_inbox_dropped(inbox_dropped_callback);
+    app_message_register_outbox_failed(outbox_failed_callback);
+    app_message_register_outbox_sent(outbox_sent_callback);
+    // Open AppMessage
+    app_message_open(64, APP_MESSAGE_OUTBOX_SIZE_MINIMUM);
 
   // Show the Window on the watch, with animated=true
   window_stack_push(s_main_window, true);
@@ -358,14 +323,6 @@ static void init(void) {
 
 static void deinit(void) {
   window_destroy(s_main_window);
-  gbitmap_destroy(s_bitmap_map);
-  gbitmap_destroy(s_bitmap_cutted_map);
-  gbitmap_destroy(s_bitmap_sea);
-  
-  #ifdef PBL_PLATFORM_BASALT
-    gbitmap_destroy(s_bitmap_circle);
-  #endif
-
 }
 
 int main(void) {

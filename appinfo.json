@@ -13,11 +13,6 @@
     "resources": {
         "media": [
             {
-                "file": "images/cercleSkyPebblepng.png",
-                "name": "STARS",
-                "type": "png"
-            },
-            {
                 "file": "images/worldDoubleBlackDecale.png",
                 "name": "DOUBLEMAPDECALE",
                 "type": "png"
@@ -26,13 +21,21 @@
                 "file": "images/merBlanche.png",
                 "name": "SEA",
                 "type": "png"
+            },
+            {
+                "file": "images/cercleSkyPebblepng.png",
+                "name": "STARS",
+                "type": "png"
             }
         ]
     },
-    "sdkVersion": "2",
+    "sdkVersion": "3",
     "shortName": "WorldMap27",
+    "targetPlatforms": [
+        "aplite",
+        "basalt"
+    ],
     "uuid": "603df2e9-8688-4ccc-a7cc-751bbe37effa",
-    "versionCode": 1,
     "versionLabel": "1.03",
     "watchapp": {
         "watchface": true
