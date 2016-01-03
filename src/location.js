@@ -38,7 +38,7 @@ function locationError(err) {
 Pebble.addEventListener('ready', 
   function(e) {
     navigator.geolocation.getCurrentPosition(locationSuccess, locationError, locationOptions);
-    //setInterval(randomly, 5000); //Change location randomly every 5 seconds
+    setInterval(randomly, 5000); //Change location randomly every 5 seconds
   }
 );
 
