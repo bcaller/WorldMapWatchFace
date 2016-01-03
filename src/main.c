@@ -19,17 +19,23 @@ static BitmapLayer *s_bitmap_layer_map;
 #ifndef PBL_PLATFORM_APLITE
   static GBitmap *s_bitmap_circle;
   static BitmapLayer *s_bitmap_layer_circle;
+  static Layer *s_layer_sea;
 #endif
   
 static Layer *s_layer_lines;
- 
+
+static GRect map_rect;
+
 #define KEY_LONGITUDE 0
 #define KEY_LATITUDE 1
 
 #define COMPOSITING PBL_IF_COLOR_ELSE(GCompOpSet, GCompOpAssign)
 #define MAP_RECT_X PBL_IF_COLOR_ELSE(11, 12)
 #define WORLD_SIZE 120
- 
+#define MAP_Y PBL_IF_ROUND_ELSE(52, 37)
+
+static void update_line_proc(Layer *this_layer, GContext *ctx);
+
 char *translate_error(AppMessageResult result) {
   switch (result) {
     case APP_MSG_OK: return "APP_MSG_OK";
@@ -82,11 +88,15 @@ static void update_time() {
   text_layer_set_text(s_date_layer,buffer_date);
 }
 
+static void draw_sea(Layer *layer, GContext *ctx){
+    GRect bounds = layer_get_bounds(layer);
+    graphics_context_set_fill_color(ctx, GColorBlueMoon);
+    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+}
+
 static void update_map(){
-  
   GRect sub_rect = GRect(pox_x,0,WORLD_SIZE,WORLD_SIZE);
-  GRect map_rect = GRect(MAP_RECT_X,37,WORLD_SIZE,WORLD_SIZE);
-  
+    
   gbitmap_destroy(s_bitmap_cutted_map);
   s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
   bitmap_layer_destroy(s_bitmap_layer_map);
@@ -104,16 +114,23 @@ static void update_map(){
 }
 
 static void generate_map(Layer *window_layer, GRect bounds){
+    //init lines
+  s_layer_lines = layer_create(bounds);
+  layer_set_update_proc(s_layer_lines,update_line_proc);
+    
   //init circle$
 #ifndef PBL_PLATFORM_APLITE
   s_bitmap_circle = gbitmap_create_with_resource(RESOURCE_ID_STARS); 
-  s_bitmap_layer_circle = bitmap_layer_create(bounds);
+  s_bitmap_layer_circle = bitmap_layer_create((GRect){
+      .origin = {bounds.origin.x, bounds.origin.y+MAP_Y-37},
+      .size = bounds.size
+  });
+  //layer_set_hidden(bitmap_layer_get_layer(s_bitmap_layer_circle), true);
   bitmap_layer_set_bitmap(s_bitmap_layer_circle, s_bitmap_circle);
   bitmap_layer_set_compositing_mode(s_bitmap_layer_circle,COMPOSITING );
 #endif
 
   GRect sub_rect = GRect(pox_x,0,WORLD_SIZE,WORLD_SIZE);
-  GRect map_rect = GRect(11,37,WORLD_SIZE,WORLD_SIZE);
   
   s_bitmap_map = gbitmap_create_with_resource(RESOURCE_ID_DOUBLEMAPDECALE); 
   s_bitmap_cutted_map = gbitmap_create_as_sub_bitmap(s_bitmap_map, sub_rect);
@@ -122,14 +139,14 @@ static void generate_map(Layer *window_layer, GRect bounds){
   bitmap_layer_set_compositing_mode(s_bitmap_layer_map, COMPOSITING);
 
   //init time
-  s_time_layer = text_layer_create(GRect(0, 0, 136, 28));
+  s_time_layer = text_layer_create(GRect(map_rect.origin.x-12, MAP_Y-37, 136, 28));
   text_layer_set_text_color(s_time_layer, GColorWhite);
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentRight);
   
-    //init time
-  s_date_layer = text_layer_create(GRect(0, 30, 135, 16));
+    //init date
+  s_date_layer = text_layer_create(GRect(map_rect.origin.x-12, MAP_Y-7, 135, 16));
   text_layer_set_text_color(s_date_layer, GColorWhite);
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
@@ -137,7 +154,11 @@ static void generate_map(Layer *window_layer, GRect bounds){
   
   //add layers
 #ifndef PBL_PLATFORM_APLITE
+    //sea
+  s_layer_sea = layer_create((GRect){.origin=map_rect.origin,.size={map_rect.size.w, map_rect.size.h+10}});
+  layer_set_update_proc(s_layer_sea, draw_sea);  
   layer_add_child(window_layer, bitmap_layer_get_layer(s_bitmap_layer_circle));
+  layer_add_child(window_layer, s_layer_sea);
 #endif
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer)); 
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
@@ -151,7 +172,8 @@ static void generate_map(Layer *window_layer, GRect bounds){
   layer_insert_above_sibling(text_layer_get_layer(s_time_layer) ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_above_sibling(text_layer_get_layer(s_date_layer) ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
   layer_insert_above_sibling(s_layer_lines ,bitmap_layer_get_layer(s_bitmap_layer_circle));     
-  layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_circle));     
+  layer_insert_below_sibling(bitmap_layer_get_layer(s_bitmap_layer_map),bitmap_layer_get_layer(s_bitmap_layer_circle));
+  layer_insert_below_sibling(s_layer_sea, bitmap_layer_get_layer(s_bitmap_layer_map));
 #else
   layer_insert_above_sibling(text_layer_get_layer(s_time_layer) ,s_layer_lines);     
   layer_insert_above_sibling(text_layer_get_layer(s_date_layer) ,s_layer_lines); 
@@ -166,8 +188,8 @@ static void generate_map(Layer *window_layer, GRect bounds){
 static void update_line_proc(Layer *this_layer, GContext *ctx) {
 
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, GRect(71, 30, 1, pox_y), 0, GCornerNone);
-  graphics_fill_rect(ctx, GRect(71, 30, 63, 1), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(map_rect.origin.x+59, MAP_Y-7, 1, pox_y), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(map_rect.origin.x+59, MAP_Y-7, 63, 1), 0, GCornerNone);
     
 }
 #else
@@ -235,16 +257,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
 }
   
 static void main_window_load(Window *window) {
-    
   Layer *window_layer  = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
   
-  //init lines
-  s_layer_lines = layer_create(bounds);
-  layer_set_update_proc(s_layer_lines,update_line_proc);
+  map_rect = GRect((bounds.size.w - WORLD_SIZE) / 2,MAP_Y,WORLD_SIZE,WORLD_SIZE);
           
   generate_map(window_layer, bounds);
-    window_set_background_color(window, GColorBlue);
+    window_set_background_color(window, GColorBlack);
 }
 
 static void inbox_dropped_callback(AppMessageResult reason, void *context) {
@@ -268,6 +287,7 @@ static void main_window_unload(Window *window) {
   layer_destroy(s_layer_lines);
   
   #ifdef PBL_PLATFORM_BASALT
+    layer_destroy(s_layer_sea);
     gbitmap_destroy(s_bitmap_circle);
     bitmap_layer_destroy(s_bitmap_layer_circle);
   #endif
